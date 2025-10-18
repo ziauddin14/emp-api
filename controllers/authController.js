@@ -23,10 +23,11 @@ const login = async (req, res) => {
         .json({ success: false, message: "Wrong password" });
     }
     const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
-    );
+  { id: user._id, role: user.role },
+  process.env.JWT_SECRET,
+  { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
+);
+
     res.status(200).json({
       success: true,
       message: "Login successful",
