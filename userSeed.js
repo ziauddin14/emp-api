@@ -1,4 +1,4 @@
-import { User } from "./models/user.js";
+import  User from "./models/user.js";
 import bcrypt from "bcrypt";
 import { connectDB } from "./lib/db.js";
 const userRegister = async () => {
