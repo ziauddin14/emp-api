@@ -5,11 +5,10 @@ import { v2 as cloudinary } from "cloudinary";
 
 // Add Employee
 
-
- const addEmployee = async (req, res) => {
+const addEmployee = async (req, res) => {
   try {
-    console.log(req.body);
-    console.log(req.file); 
+    console.log("🧾 Body:", req.body);
+    console.log("📁 File:", req.file);
 
     const {
       name,
@@ -25,7 +24,10 @@ import { v2 as cloudinary } from "cloudinary";
       role,
     } = req.body;
 
-    
+    if (!password) {
+      return res.status(400).json({ success: false, error: "Password missing!" });
+    }
+
     const user = await User.findOne({ email });
     if (user) {
       return res
@@ -33,28 +35,21 @@ import { v2 as cloudinary } from "cloudinary";
         .json({ success: false, error: "User already registered in employee" });
     }
 
-
     const hashPassword = await bcrypt.hash(password, 10);
 
-    
-    const newUser = new User({
-      name,
-      email,
-      password: hashPassword,
-      role,
-    });
-
+    const newUser = new User({ name, email, password: hashPassword, role });
     const savedUser = await newUser.save();
 
-    
     let imageUrl = "";
-    if (req.file) {
-      const uploadResult = await cloudinary.uploader.upload(req.file.path);
-      imageUrl = uploadResult.secure_url;
+    if (req.file && req.file.path) {
+      try {
+        const uploadResult = await cloudinary.uploader.upload(req.file.path);
+        imageUrl = uploadResult.secure_url;
+      } catch (uploadErr) {
+        console.error("❌ Cloudinary upload error:", uploadErr.message);
+      }
     }
 
-    console.log(imageUrl);
-    
     const newEmployee = new Employee({
       userId: savedUser._id,
       employeeId,
@@ -64,19 +59,23 @@ import { v2 as cloudinary } from "cloudinary";
       designation,
       department,
       salary,
-      profileImage: imageUrl, 
+      profileImage: imageUrl,
     });
 
     await newEmployee.save();
 
-    return res
-      .status(201)
-      .json({ success: true, message: "Employee created successfully" });
+    res.status(201).json({ success: true, message: "Employee created successfully" });
+
   } catch (error) {
-    console.log(" Error while saving employee:", error);
-    return res.status(500).json({ success: false, error: error.message });
+    console.error("🔥 Employee Add Error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack,
+    });
   }
 };
+
 
 // Get All Employees
 const getEmployee = async (req, res) => {
