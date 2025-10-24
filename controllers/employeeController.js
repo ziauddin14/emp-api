@@ -95,6 +95,24 @@ export const addEmployee = async (req, res) => {
   }
 };
 
+
+// Get All Employees
+const getEmployee = async (req, res) => {
+  try {
+    const employees = await Employee.find()
+      .populate("userId", "name email profileImage role")
+      .populate("department");
+
+    return res.status(200).json({ success: true, employees });
+  } catch (error) {
+    console.error("get employee error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "get employees server error" });
+  }
+};
+
+
 // Get Single Employee
 const getEmployees = async (req, res) => {
   const { id } = req.params;
