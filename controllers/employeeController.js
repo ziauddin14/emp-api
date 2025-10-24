@@ -17,7 +17,7 @@ const uploadFromBuffer = (fileBuffer) => {
   });
 };
 
-export const addEmployee = async (req, res) => {
+const addEmployee = async (req, res) => {
   try {
     console.log("📩 Incoming Data:", req.body);
     console.log("📸 File Info:", req.file ? req.file.originalname : "No file received");
