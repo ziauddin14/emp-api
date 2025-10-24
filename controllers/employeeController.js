@@ -6,38 +6,134 @@ import { v2 as cloudinary } from "cloudinary";
 // Add Employee
 const addEmployee = async (req, res) => {
   try {
-    // Form fields
-    const { name, email, department } = req.body;
+    // very verbose logs for debugging
+    console.log("---- New Add Employee Request ----");
+    console.log("Request headers:", req.headers?.["content-type"] || "no content-type");
+    console.log("Raw body (req.body):", req.body);
+    console.log("Uploaded file (req.file):", req.file);
 
-    // Uploaded file
-    const file = req.file; // multer ka object
-
-    if (!name || !email || !department) {
-      return res.status(400).json({ message: "All fields are required" });
+    // Quick check: body exists?
+    if (!req.body || Object.keys(req.body).length === 0) {
+      console.error("ERROR: req.body is empty. Likely frontend didn't send form-data or content-type mismatch.");
+      return res.status(400).json({ success: false, error: "Request body empty. Send multipart/form-data." });
     }
 
-    // New employee object
-    const newEmployee = new Employee({
+    // destructure and validate required fields
+    const {
       name,
       email,
+      employeeId,
+      dob,
+      gender,
+      maritalStatus,
+      designation,
       department,
-      profileImage: file ? file.filename : null, // agar file upload hai
+      salary,
+      password,
+      role,
+    } = req.body;
+
+    const missingFields = [];
+    if (!name) missingFields.push("name");
+    if (!email) missingFields.push("email");
+    if (!employeeId) missingFields.push("employeeId");
+    if (!password) missingFields.push("password");
+
+    if (missingFields.length) {
+      console.error("ERROR: Missing required fields:", missingFields);
+      return res.status(400).json({ success: false, error: `Missing required fields: ${missingFields.join(", ")}` });
+    }
+
+    // check user exists
+    const user = await User.findOne({ email });
+    if (user) {
+      console.warn("WARN: User already exists with email:", email);
+      return res.status(400).json({ success: false, error: "User already registered" });
+    }
+
+    // hash password safely
+    let hashPassword;
+    try {
+      hashPassword = await bcrypt.hash(password, 10);
+    } catch (hashErr) {
+      console.error("ERROR: bcrypt.hash failed:", hashErr);
+      return res.status(500).json({ success: false, error: "Password hashing failed" });
+    }
+
+    // create user
+    const newUser = new User({ name, email, password: hashPassword, role });
+    let savedUser;
+    try {
+      savedUser = await newUser.save();
+    } catch (saveUserErr) {
+      console.error("ERROR: saving User failed:", saveUserErr);
+      // check duplicate key error
+      if (saveUserErr.code === 11000) {
+        return res.status(400).json({ success: false, error: "Email already exists (duplicate)" });
+      }
+      return res.status(500).json({ success: false, error: "Saving user failed" });
+    }
+
+    // handle image upload (optional)
+    let imageUrl = "";
+    if (req.file) {
+      try {
+        // If you're using multer.diskStorage, req.file.path should exist
+        console.log("Uploading to Cloudinary, file path:", req.file.path || req.file.location || req.file.buffer ? "(has file)" : "(no path)");
+        const uploadResult = await cloudinary.uploader.upload(req.file.path);
+        imageUrl = uploadResult.secure_url || "";
+        console.log("Cloudinary upload success:", imageUrl);
+      } catch (cloudErr) {
+        console.error("ERROR: Cloudinary upload failed:", cloudErr);
+        // decide: either rollback savedUser or continue without image — here we'll delete user and return error
+        try {
+          await User.findByIdAndDelete(savedUser._id);
+          console.log("Rolled back created user due to image upload failure");
+        } catch (rbErr) {
+          console.error("Failed to rollback user after cloudinary failure:", rbErr);
+        }
+        return res.status(500).json({ success: false, error: "Image upload failed" });
+      }
+    } else {
+      console.warn("WARN: No file uploaded (req.file is undefined). If you expected an image, ensure frontend sends 'profileImage' with FormData.");
+    }
+
+    // Create employee doc
+    const newEmployee = new Employee({
+      userId: savedUser._id,
+      employeeId,
+      dob,
+      gender,
+      maritalStatus,
+      designation,
+      department,
+      salary,
+      profileImage: imageUrl,
     });
 
-    await newEmployee.save();
+    try {
+      await newEmployee.save();
+    } catch (saveEmployeeErr) {
+      console.error("ERROR: saving Employee failed:", saveEmployeeErr);
+      // try rollback user also
+      try {
+        await User.findByIdAndDelete(savedUser._id);
+        console.log("Rolled back created user due to employee save failure");
+      } catch (rbErr) {
+        console.error("Failed to rollback user after employee save failure:", rbErr);
+      }
+      return res.status(500).json({ success: false, error: "Saving employee failed" });
+    }
 
-    res.status(201).json({
-      message: "Employee added successfully",
-      employee: newEmployee,
-    });
-  } catch (err) {
-    console.error("Error in addEmployee:", err);
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.log("SUCCESS: Employee created with userId:", savedUser._id);
+    return res.status(201).json({ success: true, message: "Employee created successfully" });
+
+  } catch (error) {
+    // This is a catch-all — log stack so you know exact cause
+    console.error("UNCAUGHT ERROR in addEmployee:", error);
+    return res.status(500).json({ success: false, error: error.message || "Internal Server Error" });
   }
 };
-
-export default addEmployee;
-
 
 
 // Get All Employees
